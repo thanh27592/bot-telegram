@@ -1,40 +1,34 @@
+# api/index.py
 import os
 import requests
-from flask import Flask, request
+from flask import Flask, request, jsonify
 
-TOKEN = os.environ.get("TOKEN")         # Token Bot Telegram (đọc từ biến môi trường)
-GROUP_A = int(os.environ.get("GROUP_A", "0"))   # ID nhóm nguồn A
-GROUP_B = int(os.environ.get("GROUP_B", "0"))   # ID nhóm đích B
+TOKEN   = os.getenv("TOKEN")            # Bot token
+GROUP_A = int(os.getenv("GROUP_A", 0))  # ID nhóm nguồn
+GROUP_B = int(os.getenv("GROUP_B", 0))  # ID nhóm đích
 
-app = Flask(__name__)  # Ứng dụng Flask (Vercel sẽ nhận biết biến app này):contentReference[oaicite:4]{index=4}
+app = Flask(__name__)  # Vercel sẽ nhận biết biến 'app' này
 
 @app.route("/", methods=["GET"])
 def home():
-    # Endpoint index để kiểm tra bot còn hoạt động
-    return "Bot đang chạy (Flask webhook active)!"
+    return "Bot is alive!"
 
 @app.route("/webhook", methods=["POST"])
-def telegram_webhook():
-    """Xử lý dữ liệu Webhook gửi từ Telegram"""
-    data = request.get_json()  # Lấy nội dung JSON của update từ Telegram
-    if not data:
-        return "OK"  # Trả về OK ngay nếu không có dữ liệu
+def webhook():
+    data = request.get_json(force=True)
+    msg  = data.get("message") or {}
+    chat = msg.get("chat", {}).get("id")
 
-    # Kiểm tra nếu có tin nhắn mới và đến từ nhóm A
-    message = data.get("message")
-    if message:
-        chat_id = message.get("chat", {}).get("id")
-        # Chỉ forward nếu tin được gửi từ nhóm A (đúng ID nhóm nguồn)
-        if chat_id == GROUP_A:
-            msg_id = message.get("message_id")
-            try:
-                # Gửi yêu cầu forwardMessage tới Telegram Bot API
-                res = requests.post(
-                    f"https://api.telegram.org/bot{TOKEN}/forwardMessage",
-                    json={"chat_id": GROUP_B, "from_chat_id": GROUP_A, "message_id": msg_id}
-                )
-                # Kiểm tra kết quả gửi để debug (tùy chọn):
-                # print(res.status_code, res.text)
-            except Exception as e:
-                print(f"Error forwarding message: {e}")
-    return "OK"  # Trả về "OK" để Telegram biết server đã nhận (HTTP 200)
+    # Nếu message từ đúng nhóm A
+    if chat == GROUP_A:
+        msg_id = msg.get("message_id")
+        # Forward tin sang nhóm B
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/forwardMessage",
+            json={
+                "chat_id":       GROUP_B,
+                "from_chat_id":  GROUP_A,
+                "message_id":    msg_id
+            }
+        )
+    return jsonify(ok=True)
